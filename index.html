@@ -9,6 +9,10 @@
             font-family: Arial, sans-serif;
             margin: 20px;
             background-color: #f4f4f4;
+            color: #333;
+        }
+        h1, h2 {
+            color: #0056b3;
         }
         #clipboardContent {
             margin-top: 20px;
@@ -16,16 +20,22 @@
             border: 1px solid #ccc;
             background-color: #fff;
             min-height: 50px;
+            overflow-wrap: break-word; /* Garante que o texto longo não quebre o layout */
         }
         ul {
             list-style-type: decimal;
             padding-left: 20px;
+            margin-top: 15px;
         }
         li {
-            margin-bottom: 5px;
-            padding: 5px;
+            margin-bottom: 8px;
+            padding: 8px 12px;
             background-color: #e9e9e9;
-            border-radius: 3px;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            word-break: break-all; /* Quebra palavras para evitar overflow */
         }
         .instructions {
             background-color: #dff0d8;
@@ -40,6 +50,51 @@
             color: #666;
             margin-top: 10px;
         }
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px; /* Espaço entre os botões */
+        }
+        button {
+            padding: 10px 15px;
+            font-size: 1em;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+        }
+        #toggleMonitorBtn {
+            background-color: #007bff;
+            color: white;
+        }
+        #toggleMonitorBtn.active {
+            background-color: #28a745; /* Verde quando ativo */
+        }
+        #toggleMonitorBtn.inactive {
+            background-color: #dc3545; /* Vermelho quando inativo */
+        }
+        .delete-btn {
+            background-color: #ff4d4d;
+            color: white;
+            border: none;
+            border-radius: 50%; /* Faz o botão redondo */
+            width: 24px;
+            height: 24px;
+            font-size: 0.8em;
+            line-height: 1; /* Ajusta o alinhamento do texto */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            margin-left: 10px; /* Espaço entre o texto do item e o botão */
+            flex-shrink: 0; /* Evita que o botão encolha */
+        }
+        .delete-btn:hover {
+            background-color: #cc0000;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
     </style>
 </head>
 <body>
@@ -47,6 +102,11 @@
     <div class="instructions">
         <p>Este monitor verifica sua área de transferência a cada segundo. Se detectar um novo conteúdo, ele será adicionado à lista abaixo.</p>
         <p>Certifique-se de que o navegador tem permissão para ler a área de transferência. Em muitos navegadores, isso só funciona se a página estiver focada ou se houver uma interação do usuário inicial.</p>
+    </div>
+
+    <div class="controls">
+        <button id="toggleMonitorBtn" class="active">Desligar Monitor</button>
+        <button id="clearListBtn">Limpar Lista</button>
     </div>
 
     <p>Conteúdo atual da Área de Transferência (apenas para debug): <span id="clipboardContent">Nenhum</span></p>
@@ -60,54 +120,104 @@
         const pastedItemsList = document.getElementById('pastedItemsList');
         const clipboardContentDisplay = document.getElementById('clipboardContent');
         const lastUpdatedDisplay = document.getElementById('lastUpdated');
+        const toggleMonitorBtn = document.getElementById('toggleMonitorBtn');
+        const clearListBtn = document.getElementById('clearListBtn');
+
         const pastedItems = new Set(); // Usamos um Set para armazenar itens únicos
 
+        let monitorInterval; // Variável para armazenar o ID do intervalo
+        let isMonitoring = true; // Estado inicial do monitoramento
+
+        // Função para ler a área de transferência
         async function readClipboard() {
             try {
-                // `navigator.clipboard.readText()` requer permissão e pode falhar
-                // se a página não estiver focada ou se não houver interação do usuário.
                 const text = await navigator.clipboard.readText();
                 return text;
             } catch (err) {
                 console.warn('Não foi possível ler a área de transferência:', err);
-                return null; // Retorna null em caso de erro
+                return null;
             }
         }
 
+        // Função principal que monitora e adiciona itens
         async function monitorClipboard() {
             const currentClipboardText = await readClipboard();
 
             if (currentClipboardText !== null) {
-                clipboardContentDisplay.textContent = currentClipboardText; // Atualiza o display de debug
+                clipboardContentDisplay.textContent = currentClipboardText;
 
-                // Verifica se o conteúdo não está vazio e não está repetido
                 if (currentClipboardText.trim() !== '' && !pastedItems.has(currentClipboardText)) {
-                    pastedItems.add(currentClipboardText); // Adiciona ao Set para controle de duplicatas
+                    pastedItems.add(currentClipboardText);
 
                     const listItem = document.createElement('li');
-                    listItem.textContent = currentClipboardText;
-                    pastedItemsList.prepend(listItem); // Adiciona o novo item no início da lista
+                    
+                    // Cria um span para o texto do item
+                    const itemTextSpan = document.createElement('span');
+                    itemTextSpan.textContent = currentClipboardText;
+                    listItem.appendChild(itemTextSpan);
 
+                    // Cria o botão de apagar
+                    const deleteButton = document.createElement('button');
+                    deleteButton.textContent = 'X';
+                    deleteButton.className = 'delete-btn';
+                    deleteButton.onclick = () => {
+                        // Remove o item do Set e do DOM
+                        pastedItems.delete(currentClipboardText);
+                        listItem.remove();
+                        console.log('Item removido:', currentClipboardText);
+                    };
+                    listItem.appendChild(deleteButton);
+                    
+                    pastedItemsList.prepend(listItem);
                     console.log('Novo item adicionado:', currentClipboardText);
                 }
             } else {
                 clipboardContentDisplay.textContent = 'Permissão negada ou erro ao ler.';
             }
 
-            // Atualiza o horário da última verificação
             const now = new Date();
             lastUpdatedDisplay.textContent = `Última atualização: ${now.toLocaleTimeString()}`;
         }
 
-        // Inicia a verificação a cada segundo
-        setInterval(monitorClipboard, 1000);
+        // Função para ligar/desligar o monitoramento
+        function toggleMonitoring() {
+            if (isMonitoring) {
+                clearInterval(monitorInterval); // Para o intervalo
+                window.removeEventListener('focus', monitorClipboard); // Remove o listener de foco
+                toggleMonitorBtn.textContent = 'Ligar Monitor';
+                toggleMonitorBtn.classList.remove('active');
+                toggleMonitorBtn.classList.add('inactive');
+                lastUpdatedDisplay.textContent = `Monitor DESLIGADO. Última atualização: ${new Date().toLocaleTimeString()}`;
+                clipboardContentDisplay.textContent = 'Monitor DESLIGADO.';
+            } else {
+                monitorInterval = setInterval(monitorClipboard, 1000); // Inicia o intervalo
+                window.addEventListener('focus', monitorClipboard); // Adiciona o listener de foco novamente
+                toggleMonitorBtn.textContent = 'Desligar Monitor';
+                toggleMonitorBtn.classList.remove('inactive');
+                toggleMonitorBtn.classList.add('active');
+                monitorClipboard(); // Executa uma vez ao ligar para atualizar o estado
+            }
+            isMonitoring = !isMonitoring; // Inverte o estado
+        }
 
-        // Chamada inicial para preencher o display e tentar ler a área de transferência
-        monitorClipboard();
+        // Função para limpar todos os itens da lista
+        function clearList() {
+            pastedItems.clear(); // Limpa o Set
+            pastedItemsList.innerHTML = ''; // Remove todos os <li> do DOM
+            console.log('Lista limpa.');
+        }
 
-        // Adiciona um listener para o evento 'focus' para tentar ler a área de transferência
-        // quando a página ganha foco (pode ajudar com permissões em alguns navegadores).
+        // Event Listeners para os botões
+        toggleMonitorBtn.addEventListener('click', toggleMonitoring);
+        clearListBtn.addEventListener('click', clearList);
+
+        // Inicia o monitoramento automaticamente ao carregar a página
+        // e configura o intervalo inicial.
+        monitorInterval = setInterval(monitorClipboard, 1000);
+        // Adiciona o listener de foco na carga inicial
         window.addEventListener('focus', monitorClipboard);
+        // Executa uma vez ao carregar para atualizar o display inicial
+        monitorClipboard();
     </script>
 </body>
 </html>
